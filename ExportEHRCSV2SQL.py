@@ -1,0 +1,254 @@
+
+import os
+import pymysql
+conn = pymysql.connect(host='auview.ccm.pitt.edu', user='cler', password='', database='mladi', port=3306, local_infile=1)
+cur=conn.cursor()
+
+qdemo ='''load data local infile '/zfs2/mladi/work/cler/data/_demo.csv' into table mladi23.EMR_demo \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 LINES  \\
+(Rownumber ,study_id, FIN_study_id, RACE, @Age, Sex, Facility, Unit, @regdate, @dischdate, Ethnicity, ENCNTR_type, disch_disp) \\
+set \\
+AGE = cast(@Age as unsigned), \\
+REG_DATE = str_to_date(left(@regdate,19), '%Y-%m-%d %H:%i:%s'), \\
+DISCH_DATE = str_to_date(left(@dischdate,19), '%Y-%m-%d %H:%i:%s'), \\
+RegUTCoffset = CAST(substring(@regdate,25,3) AS SIGNED), \\
+DischUTCoffset = CAST(substring(@dischdate,25,3) AS SIGNED) '''
+
+qloc = '''load data local infile '/zfs2/mladi/work/cler/data/_loc.csv' into table mladi23.EMR_loc \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 LINES  \\
+(Rownumber ,study_id, FIN_study_id, @beg_date, @end_date, FACILITY, UNIT) \\
+set \\
+BEG_DATE = str_to_date(@beg_date, '%Y-%m-%d %H:%i:%s'), \\
+END_DATE = str_to_date(@end_date, '%Y-%m-%d %H:%i:%s') , \\
+BegUTCoffset = CAST(substring(@beg_date,25,3) AS SIGNED), \\
+EndUTCoffset = CAST(substring(@end_date,25,3) AS SIGNED) '''
+
+qce ='''load data local infile '/zfs2/mladi/work/cler/data/_ce.csv' into table mladi.EMR_ce \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+(Rownumber ,@dat, study_id, FIN_study_id, event_name, result_val, result_unit, result_stat, event_tag) SET \\
+chartdate = str_to_date(LEFT(@dat,23), '%Y-%m-%d %H:%i:%s') '''
+
+qlab = '''load data local infile '/zfs2/mladi/work/cler/data/_lab.csv' into table mladi23.EMR_lab \\
+fields terminated by ','  OPTIONALLY ENCLOSED BY '\\\"' ignore 1 LINES \\
+(RowNumber, \tstudy_id, FIN_study_id, @edate, ORDERED_AS, EVENT_DISP, RESULT_VAL, RESULT_STAT, RESULT_UNIT, EVENT_TAG, NORMALCY_HIGH, \\
+@Vdate, NORMALCY, NORMALCY_LOW)  \\
+SET \\
+EVENT_DATE = str_to_date(@edate, '%Y-%m-%d %H:%i:%s'), \\
+VALID_DATE = str_to_date(@Vdate, '%Y-%m-%d %H:%i:%s'), eUTCoffset = CAST(substring(@edate,25,3) AS SIGNED), \\
+vUTCoffset = CAST(substring(@Vdate,25,3) AS SIGNED) '''
+
+qio = '''load data local infile '/zfs2/mladi/work/cler/data/_io.csv' into table mladi23.EMR_io \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+(RowNumber,Study_id,FIN_Study_Id,@dat,IO_NAME,IO_DETAIL,@VOLUME,UNIT) set \\
+EVENT_date = str_to_date(@dat, '%Y-%m-%d %H:%i:%s'), \\
+VOLUME = cast(@VOLUME AS DECIMAL(9,1)), \\
+UTCoffset = CAST(substring(@dat,25,3) AS SIGNED) '''
+
+qmed = '''load data local infile '/zfs2/mladi/work/cler/data/_med.csv' into table mladi23.EMR_meds \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+(RowNumber,Study_id,FIN_Study_Id,ORDERED_AS,CATALOG_DISP,@dat,RESULT_VAL,RESULT_STAT,EVENT_TAG,ROUTE,DOSE,DOSE_UNIT,VOLUME_DOSE_UNIT,  \\
+FREE_DOSE,VOLUME_DOSE) SET \\
+CHART_DATE= str_to_date(@dat, '%Y-%m-%d %H:%i:%s'),  \\
+UTCoffset = CAST(substring(@dat,25,3) AS SIGNED) '''
+
+qicd = '''load data local infile '/zfs2/mladi/work/cler/data/_icd.csv' into table mladi23.EMR_icd \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+(RowNumber,@dat,Study_id,FIN_Study_Id,DX_IND,TYPE,CODE_TYPE,SEQ,CONFIRM_STAT,DISP,LIFE_CYCLE,SOURCE,CODE) SET \\
+CHART_DATE = str_to_date(@dat, '%Y-%m-%d %H:%i:%s') , \\
+UTCoffset = CAST(substring(@dat,25,3) AS SIGNED) '''
+
+qpatient = '''load data local infile '/zfs2/mladi/work/cler/data/_patient.csv' into table mladi23.EMR_patient \\
+fields terminated by ',' optionally enclosed by '\\\"' ignore 1 lines \\
+(Study_Id,FIN_Study_Id,@dat,BedLabel,Alias,Height,HeightUnit,Weight,WeightUnit,PressureUnit,PacedMode,ResuscitationStatus,ClinicalUnit,Gender,AdmitState) SET \\
+EVENT_TIME = str_to_date(concat(left(@dat,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+UTCoffset = cast(SUBSTRING(@dat,25,3) AS SIGNED) '''
+
+qalerts = '''load data local infile '/zfs2/mladi/work/cler/data/_alert.csv' into table mladi23.DWC_alert \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+( \\
+study_id, FIN_Study_Id, @TIMESTAMP, AlertId, SOURCE, CODE, Label, Severity, Kind, IsSilenced, SubtypeId, @AnnounceTime, @OnsetTime, @EndTime, SequenceNumber) \\
+SET \\
+UTCoffset = CAST(substring(@TIMESTAMP,25,3) AS SIGNED), \\
+TIMESTAMP    = str_to_date(CONCAT(LEFT(@TIMESTAMP,23),\\\"000\\\"), '%Y-%m-%d %H:%i:%s.%f'), \\
+AnnounceTime = str_to_date(CONCAT(LEFT(@AnnounceTime,23),\\\"000\\\"), '%Y-%m-%d %H:%i:%s.%f'), \\
+OnsetTime    = str_to_date(CONCAT(LEFT(@Onsettime,23),\\\"000\\\"), '%Y-%m-%d %H:%i:%s.%f'), \\
+EndTime = str_to_date(CONCAT(LEFT(@EndTime,23),\\\"000\\\"), '%Y-%m-%d %H:%i:%s.%f') '''
+
+qmicro = '''load data local infile '/zfs2/mladi/work/cler/data/_micro.csv' into table mladi23.EMR_micro \\
+fields terminated by ',' optionally enclosed by '\\\"' ignore 1 lines \\
+(RowNumber,Study_Id,FIN_Study_Id,micro_seq_nbr,@valid_date,organism,source_type,@performed_date,@collect_date,result_stat,@chart_date,Accession) SET \\
+valid_date = str_to_date(concat(left(@valid_date,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+performed_date = str_to_date(concat(left(@performed_date,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+collect_date = str_to_date(concat(left(@collect_date,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+chart_date = str_to_date(concat(left(@chart_date,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+vUTCoffset = cast(SUBSTRING(@valid_date,25,3) AS SIGNED), \\
+pUTCoffset = cast(SUBSTRING(@performed_date,25,3) AS SIGNED), \\
+cUTCoffset = cast(SUBSTRING(@collect_date,25,3) AS SIGNED),\\
+UTCoffset = cast(SUBSTRING(@chart_date,25,3) AS SIGNED) '''
+
+cur.execute(qdemo)
+cur.execute(qloc)
+cur.execute(qce)
+cur.execute(qlab)
+cur.execute(qio)
+cur.execute(qmed)
+cur.execute(qicd)
+cur.execute(qpatient)
+cur.execute(qalerts)
+cur.execute(qmicro)
+
+conn.commit()
+cur.close()
+conn.close()
+
+
+qdemo ='''load data local infile '/zfs2/mladi/work/cler/data/_demo.csv' into table mladi23.EMR_demo \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 LINES  \\
+(Rownumber ,study_id, FIN_study_id, RACE, @Age, Sex, Facility, Unit, @regdate, @dischdate, Ethnicity, ENCNTR_type, disch_disp) \\
+set \\
+AGE = cast(@Age as unsigned), \\
+REG_DATE = str_to_date(left(@regdate,19), '%Y-%m-%d %H:%i:%s'), \\
+DISCH_DATE = str_to_date(left(@dischdate,19), '%Y-%m-%d %H:%i:%s'), \\
+RegUTCoffset = CAST(substring(@regdate,25,3) AS SIGNED), \\
+DischUTCoffset = CAST(substring(@dischdate,25,3) AS SIGNED) '''
+cur=conn.cursor()
+cur.execute(qdemo)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
+
+
+qloc = '''load data local infile '/zfs2/mladi/work/cler/data/_loc.csv' into table mladi23.EMR_loc \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 LINES  \\
+(Rownumber ,study_id, FIN_study_id, @beg_date, @end_date, FACILITY, UNIT) \\
+set \\
+BEG_DATE = str_to_date(@beg_date, '%Y-%m-%d %H:%i:%s'), \\
+END_DATE = str_to_date(@end_date, '%Y-%m-%d %H:%i:%s') , \\
+BegUTCoffset = CAST(substring(@beg_date,25,3) AS SIGNED), \\
+EndUTCoffset = CAST(substring(@end_date,25,3) AS SIGNED) '''
+cur=conn.cursor()
+cur.execute(qloc)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
+
+
+qalerts = '''load data local infile '/zfs2/mladi/work/cler/data/_alert.csv' into table mladi23.DWC_alert \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+( \\
+study_id, FIN_Study_Id, @TIMESTAMP, AlertId, SOURCE, CODE, Label, Severity, Kind, IsSilenced, SubtypeId, @AnnounceTime, @OnsetTime, @EndTime, SequenceNumber) \\
+SET \\
+UTCoffset = CAST(substring(@TIMESTAMP,25,3) AS SIGNED), \\
+TIMESTAMP    = str_to_date(CONCAT(LEFT(@TIMESTAMP,23),\\\"000\\\"), '%Y-%m-%d %H:%i:%s.%f'), \\
+AnnounceTime = str_to_date(CONCAT(LEFT(@AnnounceTime,23),\\\"000\\\"), '%Y-%m-%d %H:%i:%s.%f'), \\
+OnsetTime    = str_to_date(CONCAT(LEFT(@Onsettime,23),\\\"000\\\"), '%Y-%m-%d %H:%i:%s.%f'), \\
+EndTime = str_to_date(CONCAT(LEFT(@EndTime,23),\\\"000\\\"), '%Y-%m-%d %H:%i:%s.%f') '''
+cur=conn.cursor()
+cur.execute(qalerts)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
+
+qce ='''load data local infile '/zfs2/mladi/work/cler/data/_ce.csv' into table mladi23.EMR_ce \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+(Rownumber ,@dat, study_id, FIN_study_id, event_name, result_val, result_unit, result_stat, event_tag) SET \\
+chartdate = str_to_date(LEFT(@dat,23), '%Y-%m-%d %H:%i:%s') ,\\
+UTCoffset = CAST(substring(@dat,25,3) AS SIGNED) '''
+cur=conn.cursor()
+cur.execute(qce)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
+
+qlab = '''load data local infile '/zfs2/mladi/work/cler/data/_lab.csv' into table mladi23.EMR_lab \\
+fields terminated by ','  OPTIONALLY ENCLOSED BY '\\\"' ignore 1 LINES \\
+(RowNumber, \tstudy_id, FIN_study_id, @edate, ORDERED_AS, EVENT_DISP, RESULT_VAL, RESULT_STAT, RESULT_UNIT, EVENT_TAG, NORMALCY_HIGH, \\
+@Vdate, NORMALCY, NORMALCY_LOW)  \\
+SET \\
+EVENT_DATE = str_to_date(@edate, '%Y-%m-%d %H:%i:%s'), \\
+VALID_DATE = str_to_date(@Vdate, '%Y-%m-%d %H:%i:%s'), eUTCoffset = CAST(substring(@edate,25,3) AS SIGNED), \\
+vUTCoffset = CAST(substring(@Vdate,25,3) AS SIGNED) '''
+
+cur=conn.cursor()
+cur.execute(qlab)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
+
+qio = '''load data local infile '/zfs2/mladi/work/cler/data/_io.csv' into table mladi23.EMR_io \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+(RowNumber,Study_id,FIN_Study_Id,@dat,IO_NAME,IO_DETAIL,@VOLUME,UNIT) set \\
+EVENT_date = str_to_date(@dat, '%Y-%m-%d %H:%i:%s'), \\
+VOLUME = cast(@VOLUME AS DECIMAL(9,1)), \\
+UTCoffset = CAST(substring(@dat,25,3) AS SIGNED) '''
+
+cur=conn.cursor()
+cur.execute(qio)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
+
+qmed = '''load data local infile '/zfs2/mladi/work/cler/data/_med.csv' into table mladi23.EMR_meds \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+(RowNumber,Study_id,FIN_Study_Id,ORDERED_AS,CATALOG_DISP,@dat,RESULT_VAL,RESULT_STAT,EVENT_TAG,ROUTE,DOSE,DOSE_UNIT,VOLUME_DOSE_UNIT,  \\
+FREE_DOSE,VOLUME_DOSE) SET \\
+CHART_DATE= str_to_date(@dat, '%Y-%m-%d %H:%i:%s'),  \\
+UTCoffset = CAST(substring(@dat,25,3) AS SIGNED) '''
+
+cur=conn.cursor()
+cur.execute(qmed)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
+
+qicd = '''load data local infile '/zfs2/mladi/work/cler/data/_icd.csv' into table mladi23.EMR_icd \\
+fields terminated by ',' optionally enclosed BY '\\\"' ignore 1 lines \\
+(RowNumber,@dat,Study_id,FIN_Study_Id,DX_IND,TYPE,CODE_TYPE,SEQ,CONFIRM_STAT,DISP,LIFE_CYCLE,SOURCE,CODE) SET \\
+CHART_DATE = str_to_date(@dat, '%Y-%m-%d %H:%i:%s') , \\
+UTCoffset = CAST(substring(@dat,25,3) AS SIGNED) '''
+
+cur=conn.cursor()
+cur.execute(qicd)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
+
+qpatient = '''load data local infile '/zfs2/mladi/work/cler/data/_patient.csv' into table mladi23.EMR_patient \\
+fields terminated by ',' optionally enclosed by '\\\"' ignore 1 lines \\
+(Study_Id,FIN_Study_Id,@dat,BedLabel,Alias,Height,HeightUnit,Weight,WeightUnit,PressureUnit,PacedMode,ResuscitationStatus,ClinicalUnit,Gender,AdmitState) SET \\
+EVENT_TIME = str_to_date(concat(left(@dat,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+UTCoffset = cast(SUBSTRING(@dat,25,3) AS SIGNED) '''
+
+cur=conn.cursor()
+cur.execute(qpatient)
+conn.commit()
+cur.close()
+conn.close()
+print('Done') 
+
+qmicro = '''load data local infile '/zfs2/mladi/work/cler/data/_micro.csv' into table mladi23.EMR_micro \\
+fields terminated by ',' optionally enclosed by '\\\"' ignore 1 lines \\
+(RowNumber,Study_Id,FIN_Study_Id,micro_seq_nbr,@valid_date,organism,source_type,@performed_date,@collect_date,result_stat,@chart_date,Accession) SET \\
+valid_date = str_to_date(concat(left(@valid_date,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+performed_date = str_to_date(concat(left(@performed_date,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+collect_date = str_to_date(concat(left(@collect_date,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+chart_date = str_to_date(concat(left(@chart_date,23),'000'), '%Y-%m-%d %H:%i:%s.%f'), \\
+vUTCoffset = cast(SUBSTRING(@valid_date,25,3) AS SIGNED), \\
+pUTCoffset = cast(SUBSTRING(@performed_date,25,3) AS SIGNED), \\
+cUTCoffset = cast(SUBSTRING(@collect_date,25,3) AS SIGNED),\\
+UTCoffset = cast(SUBSTRING(@chart_date,25,3) AS SIGNED) '''
+
+cur=conn.cursor()
+cur.execute(qmicro)
+conn.commit()
+cur.close()
+conn.close()
+print('Done')
